@@ -1,8 +1,15 @@
 (ns justino.numerology
   (:use [justino.debug]))
 
-(def pi (slurp "resources/public/pidigits.txt"))
-(def phi (slurp "resources/public/phidigits.txt"))
+(def pi (slurp "resources/public/numbers/pidigits.txt"))
+(def phi (slurp "resources/public/numbers/phidigits.txt"))
+
+(defn fibs []
+  (map first (iterate (fn [[a b]] (vector b (+ a b))) [0 1M])))
+
+(defn fibs-mod [n modulus]
+  (->> (take n (fibs))
+       (map #(mod % modulus))))
 
 (defn string-to-bigint [s]
   (->> (seq s)

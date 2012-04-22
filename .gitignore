@@ -1,6 +1,7 @@
 pom.xml
 *jar
 /lib/
+/sc3-plugins/
 /classes/
 .lein-failures
 .lein-deps-sum
