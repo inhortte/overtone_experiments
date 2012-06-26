@@ -226,31 +226,26 @@
         env (env-gen:kr (envelope [level 0] [dur]) FREE)]
     (* env (saw freq))))
 
-;; floating!
-(defcgen floating-cgen [pitch {:default 220} amp {:default 0.4}]
+;; let's try some impulse - not working.
+(defcgen tinkle
+  [freq {:default 220 :doc "initial frequency"}
+   harms {:default 3
+          :doc "number of harmonics - all harmonics over 4 will be lowered to the source octave"}]
   (:ar
-   (let [pul-am-env (env-gen (envelope [0.1 0.2 0.5 0.3]
-                                       [(inc (rand-int 5))
-                                        (inc (rand-int 10))
-                                        (inc (rand-int 10))]
-                                       :linear 2 0) FREE)
-         pul-width-mod (+ 0.3 (* 0.2 (sin-osc (/ 1.0 (inc (rand-int 16))))))
-         pul-res-env (env-gen (envelope [200 200 500 4000 1000]
-                                        [1 (inc (rand-int 10))
-                                         (inc (rand-int 20))
-                                         (inc (rand-int 15))]
-                                        :exponential 3 0) FREE)
-         pul-osc (* pul-am-env (pulse pitch pul-width-mod))
-         pul-res (resonz pul-osc pul-res-env)]
-     (* amp pul-res))))
+   (letfn [(rts [s n]
+             (let [r [(- s (/ s 2.0)) (+ s (/ s 2.0))]]
+               (loop [n n]
+                 (if (and (>= n (first r)) (<= n (second r))) n
+                     (recur (/ n 2.0))))))]
+     (let [notes (map #(rts freq (* freq (inc %))) (range harms))
+           env (decay (t2a (demand (impulse:kr 40) 0
+                                   (dseq [0 1] INF))) 0.7)
+           bing (* 0.5 (* 7 env) (sin-osc (nth notes (rand-int (count notes)))))]
+       (clip2 bing 1)))))
 
-;; This does not work.
-(defsynth floating-chord-synth [amp 0.4 n1 65.40639132514966 n2 77.78174593052022 n3 97.99885899543733]
-  (let [pitches [n1 n2 n3]
-        amp-each (/ (:value amp) (count pitches))
-        floatings (floating-cgen pitches)]
-    (out 0 (* amp (splay floatings :spread 1 :center 0)))))
+;; sequencing
 
-(defn floating-chord [amp & ch]
-  (let [[n1 n2 n3] (map midi->hz (apply chord ch))]
-    (floating-chord-synth amp n1 n2 n3)))
+(defn pud-pan [m]
+  (after-delay 0 (fn [] (pud :pan -1)))
+  (after-delay (beat-len m) (fn [] (pud :pan 1))))
+

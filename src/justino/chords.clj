@@ -1,40 +1,44 @@
 (ns justino.chords
-  (:use [overtone.core]))
+  (:use [overtone.core]
+        justino.time
+        justino.synths))
 
-(defcgen floating-cgen [pitch {:default 220} amp {:default 0.4}]
-  (:ar
-   (let [pul-am-env (env-gen (envelope [0.1 0.2 0.5 0.3]
-                                       [(inc (rand-int 5))
-                                        (inc (rand-int 10))
-                                        (inc (rand-int 10))]
-                                       :linear 2 0) FREE)
-         pul-width-mod (+ 0.3 (* 0.2 (sin-osc (/ 1.0 (inc (rand-int 16))))))
-         pul-res-env (env-gen (envelope [200 200 500 4000 1000]
-                                        [1 (inc (rand-int 10))
-                                         (inc (rand-int 20))
-                                         (inc (rand-int 15))]
-                                        :exponential 3 0) FREE)
-         pul-osc (* pul-am-env (pulse pitch pul-width-mod))
-         pul-res (resonz pul-osc pul-res-env)]
-     (* amp pul-res))))
+(defmacro chord-macro [name inst]
+  `(def ~(symbol name)
+     (fn [amp# & ch#]
+       (let [pitches# (map midi->hz (apply chord ch#))
+             s# (apply ~inst (cons amp# pitches#))]
+         (fn [new-amp# & new-ch#]
+           (let [new-pitches# (map midi->hz (apply chord new-ch#))
+                 note-keys# (map #(keyword (str "n" (inc %)))
+                                 (range (count new-pitches#)))]
+             (when new-amp# (ctl (:id s#) :amp new-amp#))
+             (doseq [note# (seq (zipmap note-keys# new-pitches#))]
+               (ctl (:id s#) (first note#) (second note#)))))))))
 
-(defsynth floating-chord-synth [amp 0.4 n1 65.40639132514966 n2 77.78174593052022 n3 97.99885899543733]
-  (let [pitches [n1 n2 n3]
-        amp-each (/ (:value amp) (count pitches))
-        floatings (floating-cgen pitches)]
-    (out 0 (* amp (splay floatings :spread 1 :center 0)))))
+(chord-macro "floating-chord" floating-chord-synth)
 
-(defn floating-chord [amp & ch]
-  "Returns a function which takes the same inputs for modification."
-  (let [[n1 n2 n3] (map midi->hz (apply chord ch))
-        s (floating-chord-synth amp n1 n2 n3)]
-    (println (:id s))
-    (fn [new-amp & ch]
-      (let [pitches (map midi->hz (apply chord ch))
-            new-amp (or new-amp amp)]
-        (when new-amp (ctl (:id s) :amp new-amp))
-        (doseq [note (seq (zipmap [:n1 :n2 :n3] pitches))]
-          (ctl (:id s) (first note) (second note)))))))
+(defn with-cho-pro [m chopro beats inst amp]
+  (after-delay
+   (til-next-beat m)
+   (let [pf (fun-wrap
+             (let [cs (apply inst
+                             (cons amp
+                                   (rest (first chopro))))]
+               (periodic (* beats (beat-len m))
+                         (fn []
+                          (apply cs (rand-nth chopro))))))]
+     pf)))
 
-
-
+(defn arpeg [m freqs beats inst amp & etc]
+  (let [beats-len (* beats (beat-len m))
+        beat-frac (/ beats-len (count freqs))
+        freqs (shuffle freqs)]
+    (periodic beats-len
+              (fn []
+                (->> (zipmap (range) freqs)
+                     (seq) (sort)
+                     (map #(after-delay (* beat-frac (first %))
+                                        (fn []
+                                          (apply inst (cons amp (cons (second %) etc))))))
+                     (dorun))))))
